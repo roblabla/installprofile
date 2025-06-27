@@ -7,6 +7,7 @@
 
 @interface CPProfile : NSObject <NSSecureCoding>
 - (id)initWithData:(id)arg1 error:(id *)arg2;
+- (void)setUserData:(id)arg1 forKey:(id)arg2;
 @property(readonly) id dictionaryForArchiver;
 @end
 
@@ -35,17 +36,23 @@ int main() {
     }
 
     NSError *error = nil;
-    NSData* data = [NSData dataWithContentsOfFile:path options:0 error:&error];
+    NSData *profileData = [NSData dataWithContentsOfFile:path options:0 error:&error];
     if (error) {
         NSLog(@" error => %@ ", error);
         return 1;
     }
 
-    CPProfile *profile = [[CPProfile alloc] initWithData:data error:&error];
+    CPProfile *profile = [[CPProfile alloc] initWithData:profileData error:&error];
     if (error) {
         NSLog(@" error => %@ ", error);
         return 1;
     }
+
+    [profile setUserData:@"MDM" forKey:@"ManagedSource"];
+    [profile setUserData:@{
+        @"MDMUserApproved": @YES
+    } forKey:@"SPIOverrides"];
+
     NSLog(@" profile => %@ ", [profile dictionaryForArchiver]);
     error = [mgr installProfile:profile forUser:nil];
     if (error) {
