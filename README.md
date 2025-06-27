@@ -12,5 +12,7 @@ Requires disabling SIP.
 
 ```
 make
-./installprofile <path/to/file.mobileconfig>
+./installprofile [-u] <path/to/file.mobileconfig>
 ```
+
+Pass `-u` to uninstall a previously installed profile.

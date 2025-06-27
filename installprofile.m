@@ -15,6 +15,7 @@
 @interface CPProfileManager : NSObject
 + (id)sharedProfileManager;
 - (id)installProfile:(id)arg1 forUser:(id)arg2;
+- (id)uninstallProfile:(id)arg1 forUser:(id)arg2 removalPassword:(id)arg3;
 @end
 
 
@@ -23,11 +24,11 @@
 #include <stdio.h>
 
 int usage(NSArray *args) {
-    NSLog(@"Usage: %@ <file>", [args objectAtIndex:0]);
+    NSLog(@"Usage: %@ [-u] <file>", [args objectAtIndex:0]);
     return 1;
 }
 
-int runAsService(NSString *path) {
+int runAsService(NSString *path, bool isUninstall) {
     CPProfileManager *mgr = [CPProfileManager sharedProfileManager];
     if (mgr == nil) {
         NSLog(@"Failed to get shared CPProfileManager.");
@@ -53,12 +54,22 @@ int runAsService(NSString *path) {
     } forKey:@"SPIOverrides"];
 
     NSLog(@" profile => %@ ", [profile dictionaryForArchiver]);
-    error = [mgr installProfile:profile forUser:nil];
+
+    if (isUninstall) {
+        error = [mgr uninstallProfile:profile forUser:nil removalPassword:nil];
+    } else {
+        error = [mgr installProfile:profile forUser:nil];
+    }
     if (error) {
         NSLog(@" error => %@ ", error);
         return 1;
     }
-    NSLog(@"Successfully installed profile");
+
+    if (isUninstall) {
+        NSLog(@"Successfully uninstalled profile");
+    } else {
+        NSLog(@"Successfully installed profile");
+    }
     return 0;
 }
 
@@ -83,11 +94,12 @@ bool installProfileServiceIsUp() {
     return false;
 }
 
-int createAndWaitService(NSString *path) {
+int createAndWaitService(NSString *path, bool isUninstall) {
     NSString *currentExecutable = [[NSBundle mainBundle] executablePath];
+    NSString *absolutePath = [[NSURL fileURLWithPath:path] path];
     NSDictionary *service = @{
         @"Label": @"installprofile",
-        @"ProgramArguments": @[currentExecutable, @"-s", path],
+        @"ProgramArguments": @[currentExecutable, @"-s", absolutePath],
         @"RunAtLoad": @NO,
         @"WorkingDirectory": [[NSFileManager defaultManager] currentDirectoryPath],
     };
@@ -129,7 +141,11 @@ int createAndWaitService(NSString *path) {
     NSString *serviceName = @"system/installprofile";
     NSTask *debugTask = [NSTask new];
     [debugTask setLaunchPath:@"/bin/launchctl"];
-    [debugTask setArguments:@[@"debug", serviceName, @"--stdout", @"--stderr"]];
+    NSMutableArray *debugArgs = [NSMutableArray arrayWithArray:@[@"debug", serviceName, @"--stdout", @"--stderr", @"--", currentExecutable, @"-s", absolutePath]];
+    if (isUninstall) {
+        [debugArgs addObject:@"-u"];
+    }
+    [debugTask setArguments:debugArgs];
     [debugTask launch];
 
     NSTask *startTask = [NSTask new];
@@ -155,6 +171,7 @@ int main(int argc, char**argv) {
     NSArray *arguments = [[NSProcessInfo processInfo] arguments];
 
     bool isService = getppid() == 1;
+    bool isUninstall = false;
     NSString *path = nil;
     for (NSUInteger i = 1; i < [arguments count]; i++) {
         NSString *arg = arguments[i];
@@ -168,6 +185,8 @@ int main(int argc, char**argv) {
             for (id c in chars) {
                 if ([c isEqual:@"s"]) {
                     isService = true;
+                } else if ([c isEqual:@"u"]) {
+                    isUninstall = true;
                 } else {
                     return usage(arguments);
                 }
@@ -184,8 +203,8 @@ int main(int argc, char**argv) {
 
     if (!isService) {
         // Create service
-        return createAndWaitService(path);
+        return createAndWaitService(path, isUninstall);
     }
 
-    return runAsService(path);
+    return runAsService(path, isUninstall);
 }
